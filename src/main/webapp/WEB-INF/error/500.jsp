@@ -1,4 +1,5 @@
 <%@ page contentType="text/html;charset=UTF-8" language="java" %>
+<%@ taglib prefix="c" uri="jakarta.tags.core" %>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -86,18 +87,15 @@
             <a href="${pageContext.request.contextPath}/support" class="btn btn-outline-primary">Contact Support</a>
         </div>
         
-        <%-- Show error details in development environment --%>
-        <% if (request.getAttribute("javax.servlet.error.exception") != null 
-              && System.getProperty("app.environment", "development").equals("development")) { %>
+        <c:if test="${not empty pageContext.errorData.throwable and initParam['environment'] eq 'development'}">
             <div class="error-details">
                 <h3>Error Details</h3>
                 <pre>${pageContext.errorData.throwable}</pre>
             </div>
-        <% } %>
+        </c:if>
     </div>
 
-    <%-- Report error to monitoring service in production --%>
-    <% if (System.getProperty("app.environment", "development").equals("production")) { %>
+    <c:if test="${initParam['environment'] eq 'production'}">
         <script>
             // Example error reporting
             window.addEventListener('load', function() {
@@ -109,15 +107,16 @@
                 };
                 
                 // Send error data to monitoring service
-                fetch('/api/error-reporting', {
+                fetch('${pageContext.request.contextPath}/api/error-reporting', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '${sessionScope.csrfToken}'
                     },
                     body: JSON.stringify(errorData)
                 }).catch(console.error);
             });
         </script>
-    <% } %>
+    </c:if>
 </body>
 </html>

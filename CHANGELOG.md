@@ -32,8 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Base servlet architecture with common functionality
 - Dashboard implementation with real-time updates
 - WebSocket support for live data streaming
-- Custom error pages (404, 500)
+- Custom error pages (404, 500) with environment-specific details
 - JSP views with component-based architecture
+- Jakarta JSTL integration for view templates
 - Responsive frontend design
 
 #### Frontend Assets
@@ -72,6 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Dependencies
 - Jakarta EE 10.0.0
+- Jakarta Servlet 6.0.0
+- Jakarta WebSocket 2.1.1
+- Jakarta JSTL 3.0.0
 - PostgreSQL 42.7.1
 - HikariCP 5.1.0
 - SLF4J 2.0.9
@@ -88,7 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Session-based authentication
 - CSRF protection
 - Input validation
-- Error handling
+- Error handling with environment-specific details
 - Logging system
 - Dark/Light theme support
 - Responsive design
