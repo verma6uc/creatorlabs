@@ -1,7 +1,9 @@
 package utils;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -9,289 +11,215 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
- * Utility class for managing database migrations.
- * Handles schema versioning and updates.
+ * Utility class for handling database migrations
  */
-public class DatabaseMigrationUtil {
+public final class DatabaseMigrationUtil {
     private static final Logger logger = LoggerFactory.getLogger(DatabaseMigrationUtil.class);
-    private static final String MIGRATION_TABLE = "schema_migrations";
-    private static final Pattern SQL_DELIMITER = Pattern.compile(";\\s*$", Pattern.MULTILINE);
+    private static final String MIGRATIONS_PATH = "db/migrations";
+    private static final Pattern MIGRATION_FILE_PATTERN = Pattern.compile("V(\\d+)__.*\\.sql");
+
+    private DatabaseMigrationUtil() {
+        throw new AssertionError("DatabaseMigrationUtil class should not be instantiated");
+    }
 
     /**
-     * Record to represent a migration version
+     * Migration version record
      */
-    private record MigrationVersion(
-        String version,
+    public record MigrationVersion(
+        int version,
         String description,
-        LocalDateTime appliedAt
+        Instant appliedAt
     ) {}
 
     /**
-     * Initialize the migration system
+     * Run database migrations
      */
-    public static void initialize() {
-        try (Connection conn = DatabaseUtils.getConnection()) {
-            createMigrationTableIfNeeded(conn);
-            runPendingMigrations(conn);
-        } catch (SQLException e) {
-            logger.error("Failed to initialize database migrations", e);
-            throw new RuntimeException("Database migration initialization failed", e);
+    public static void migrateDatabase() {
+        logger.info("Starting database migration");
+
+        try {
+            createVersionTableIfNeeded();
+            List<MigrationVersion> appliedMigrations = getAppliedMigrations();
+            List<String> pendingMigrations = findPendingMigrations(appliedMigrations);
+
+            if (pendingMigrations.isEmpty()) {
+                logger.info("No pending migrations found");
+                return;
+            }
+
+            for (String migrationFile : pendingMigrations) {
+                applyMigration(migrationFile);
+            }
+
+            logger.info("Database migration completed successfully");
+        } catch (Exception e) {
+            logger.error("Error during database migration", e);
+            throw new RuntimeException("Database migration failed", e);
         }
     }
 
     /**
-     * Create the migration tracking table if it doesn't exist
+     * Create version table if it doesn't exist
      */
-    private static void createMigrationTableIfNeeded(Connection conn) throws SQLException {
-        String createTableSQL = """
-            CREATE TABLE IF NOT EXISTS %s (
-                version VARCHAR(50) PRIMARY KEY,
-                description TEXT NOT NULL,
-                applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                checksum VARCHAR(64) NOT NULL
+    private static void createVersionTableIfNeeded() throws SQLException {
+        String sql = """
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                description VARCHAR(200) NOT NULL,
+                applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             )
-            """.formatted(MIGRATION_TABLE);
+        """;
 
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute(createTableSQL);
-            logger.info("Migration table check completed");
+        try (Connection conn = DatabaseUtils.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.executeUpdate();
+            logger.debug("Schema version table created or verified");
         }
     }
 
     /**
-     * Run any pending migrations
+     * Get list of applied migrations
      */
-    private static void runPendingMigrations(Connection conn) throws SQLException {
-        List<String> appliedMigrations = getAppliedMigrations(conn);
-        List<String> pendingMigrations = findPendingMigrations(appliedMigrations);
+    private static List<MigrationVersion> getAppliedMigrations() throws SQLException {
+        String sql = "SELECT version, description, applied_at FROM schema_version ORDER BY version";
+        List<MigrationVersion> migrations = new ArrayList<>();
 
-        for (String migrationFile : pendingMigrations) {
-            applyMigration(conn, migrationFile);
-        }
-    }
-
-    /**
-     * Get list of already applied migrations
-     */
-    private static List<String> getAppliedMigrations(Connection conn) throws SQLException {
-        List<String> applied = new ArrayList<>();
-        String sql = "SELECT version FROM " + MIGRATION_TABLE + " ORDER BY applied_at";
-
-        try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+        try (Connection conn = DatabaseUtils.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            
             while (rs.next()) {
-                applied.add(rs.getString("version"));
+                migrations.add(new MigrationVersion(
+                    rs.getInt("version"),
+                    rs.getString("description"),
+                    rs.getTimestamp("applied_at").toInstant()
+                ));
             }
         }
-        return applied;
+
+        return migrations;
     }
 
     /**
-     * Find migrations that haven't been applied yet
+     * Find pending migrations
      */
-    private static List<String> findPendingMigrations(List<String> appliedMigrations) {
-        List<String> pending = new ArrayList<>();
+    private static List<String> findPendingMigrations(List<MigrationVersion> appliedMigrations) {
+        List<String> pendingMigrations = new ArrayList<>();
+        
         try {
-            // List all migration files in the db/migrations directory
-            try (InputStream is = DatabaseMigrationUtil.class.getResourceAsStream("/db/migrations")) {
-                if (is == null) {
-                    logger.warn("No migrations directory found");
-                    return pending;
+            ClassLoader classLoader = DatabaseMigrationUtil.class.getClassLoader();
+            try (InputStream in = classLoader.getResourceAsStream(MIGRATIONS_PATH)) {
+                if (in == null) {
+                    logger.warn("Migrations directory not found: {}", MIGRATIONS_PATH);
+                    return pendingMigrations;
                 }
 
-                BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-                String fileName;
-                while ((fileName = reader.readLine()) != null) {
-                    if (fileName.endsWith(".sql") && !appliedMigrations.contains(getVersionFromFileName(fileName))) {
-                        pending.add(fileName);
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        if (line.endsWith(".sql")) {
+                            var matcher = MIGRATION_FILE_PATTERN.matcher(line);
+                            if (matcher.matches()) {
+                                int version = Integer.parseInt(matcher.group(1));
+                                if (appliedMigrations.stream()
+                                        .noneMatch(m -> m.version() == version)) {
+                                    pendingMigrations.add(line);
+                                }
+                            }
+                        }
                     }
                 }
             }
-        } catch (IOException e) {
-            logger.error("Failed to read migration files", e);
-            throw new RuntimeException("Failed to read migration files", e);
+        } catch (Exception e) {
+            logger.error("Error finding pending migrations", e);
+            throw new RuntimeException("Error finding pending migrations", e);
         }
-        return pending;
+
+        return pendingMigrations;
     }
 
     /**
      * Apply a single migration
      */
-    private static void applyMigration(Connection conn, String migrationFile) throws SQLException {
+    private static void applyMigration(String migrationFile) {
         logger.info("Applying migration: {}", migrationFile);
-        String version = getVersionFromFileName(migrationFile);
-        String description = getDescriptionFromFileName(migrationFile);
 
         try {
-            conn.setAutoCommit(false);
+            String sql = loadMigrationSql(migrationFile);
+            int version = extractVersion(migrationFile);
+            String description = extractDescription(migrationFile);
 
-            // Read and execute migration SQL
-            String migrationSql = readMigrationFile(migrationFile);
-            String[] statements = SQL_DELIMITER.split(migrationSql);
+            try (Connection conn = DatabaseUtils.getConnection()) {
+                conn.setAutoCommit(false);
 
-            try (Statement stmt = conn.createStatement()) {
-                for (String sql : statements) {
-                    if (!sql.trim().isEmpty()) {
-                        stmt.execute(sql.trim());
+                try {
+                    // Execute migration
+                    try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                        stmt.executeUpdate();
                     }
+
+                    // Record migration
+                    String insertSql = """
+                        INSERT INTO schema_version (version, description)
+                        VALUES (?, ?)
+                    """;
+                    try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
+                        stmt.setInt(1, version);
+                        stmt.setString(2, description);
+                        stmt.executeUpdate();
+                    }
+
+                    conn.commit();
+                    logger.info("Migration {} applied successfully", migrationFile);
+                } catch (Exception e) {
+                    conn.rollback();
+                    throw e;
+                } finally {
+                    conn.setAutoCommit(true);
                 }
             }
-
-            // Record the migration
-            recordMigration(conn, version, description, migrationSql);
-
-            conn.commit();
-            logger.info("Successfully applied migration: {}", migrationFile);
         } catch (Exception e) {
-            conn.rollback();
-            logger.error("Failed to apply migration: {}", migrationFile, e);
-            throw new SQLException("Migration failed: " + migrationFile, e);
-        } finally {
-            conn.setAutoCommit(true);
+            logger.error("Error applying migration: {}", migrationFile, e);
+            throw new RuntimeException("Migration failed: " + migrationFile, e);
         }
     }
 
     /**
-     * Record a successfully applied migration
+     * Load migration SQL from file
      */
-    private static void recordMigration(Connection conn, String version, String description, String sql) 
-            throws SQLException {
-        String insertSql = "INSERT INTO " + MIGRATION_TABLE + 
-                          " (version, description, checksum) VALUES (?, ?, ?)";
-        
-        try (PreparedStatement pstmt = conn.prepareStatement(insertSql)) {
-            pstmt.setString(1, version);
-            pstmt.setString(2, description);
-            pstmt.setString(3, calculateChecksum(sql));
-            pstmt.executeUpdate();
-        }
-    }
-
-    /**
-     * Calculate checksum for migration SQL
-     */
-    private static String calculateChecksum(String sql) {
-        try {
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(sql.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : hash) {
-                String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
-                hexString.append(hex);
+    private static String loadMigrationSql(String migrationFile) throws Exception {
+        try (InputStream in = DatabaseMigrationUtil.class.getClassLoader()
+                .getResourceAsStream(MIGRATIONS_PATH + "/" + migrationFile)) {
+            if (in == null) {
+                throw new RuntimeException("Migration file not found: " + migrationFile);
             }
-            return hexString.toString();
-        } catch (Exception e) {
-            logger.error("Failed to calculate checksum", e);
-            throw new RuntimeException("Failed to calculate checksum", e);
-        }
-    }
-
-    /**
-     * Read migration file content
-     */
-    private static String readMigrationFile(String fileName) throws IOException {
-        try (InputStream is = DatabaseMigrationUtil.class.getResourceAsStream("/db/migrations/" + fileName)) {
-            if (is == null) {
-                throw new IOException("Migration file not found: " + fileName);
-            }
-            return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
     }
 
     /**
      * Extract version number from migration filename
      */
-    private static String getVersionFromFileName(String fileName) {
-        return fileName.split("_")[0];
+    private static int extractVersion(String migrationFile) {
+        var matcher = MIGRATION_FILE_PATTERN.matcher(migrationFile);
+        if (matcher.matches()) {
+            return Integer.parseInt(matcher.group(1));
+        }
+        throw new IllegalArgumentException("Invalid migration filename: " + migrationFile);
     }
 
     /**
      * Extract description from migration filename
      */
-    private static String getDescriptionFromFileName(String fileName) {
-        String nameWithoutVersion = fileName.substring(fileName.indexOf('_') + 1);
-        return nameWithoutVersion.substring(0, nameWithoutVersion.lastIndexOf('.')).replace('_', ' ');
-    }
-
-    /**
-     * Validate database schema
-     */
-    public static boolean validateSchema() {
-        try (Connection conn = DatabaseUtils.getConnection()) {
-            List<String> appliedMigrations = getAppliedMigrations(conn);
-            
-            // Verify each applied migration's checksum
-            for (String version : appliedMigrations) {
-                if (!validateMigrationChecksum(conn, version)) {
-                    return false;
-                }
-            }
-            
-            return true;
-        } catch (SQLException e) {
-            logger.error("Schema validation failed", e);
-            return false;
-        }
-    }
-
-    /**
-     * Validate a single migration's checksum
-     */
-    private static boolean validateMigrationChecksum(Connection conn, String version) throws SQLException {
-        String sql = "SELECT checksum FROM " + MIGRATION_TABLE + " WHERE version = ?";
-        
-        try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
-            pstmt.setString(1, version);
-            
-            try (ResultSet rs = pstmt.executeQuery()) {
-                if (rs.next()) {
-                    String storedChecksum = rs.getString("checksum");
-                    String fileName = findMigrationFileByVersion(version);
-                    if (fileName == null) {
-                        logger.error("Migration file not found for version: {}", version);
-                        return false;
-                    }
-                    
-                    String currentSql = readMigrationFile(fileName);
-                    String currentChecksum = calculateChecksum(currentSql);
-                    
-                    return storedChecksum.equals(currentChecksum);
-                }
-            }
-        } catch (IOException e) {
-            logger.error("Failed to validate migration checksum", e);
-            return false;
-        }
-        
-        return false;
-    }
-
-    /**
-     * Find migration file by version number
-     */
-    private static String findMigrationFileByVersion(String version) throws IOException {
-        try (InputStream is = DatabaseMigrationUtil.class.getResourceAsStream("/db/migrations")) {
-            if (is == null) return null;
-
-            BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-            String fileName;
-            while ((fileName = reader.readLine()) != null) {
-                if (fileName.startsWith(version + "_")) {
-                    return fileName;
-                }
-            }
-        }
-        return null;
+    private static String extractDescription(String migrationFile) {
+        String name = migrationFile.substring(migrationFile.indexOf("__") + 2);
+        name = name.substring(0, name.lastIndexOf("."));
+        return name.replace("_", " ");
     }
 }

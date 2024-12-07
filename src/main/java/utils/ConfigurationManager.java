@@ -1,231 +1,147 @@
 package utils;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+
 /**
- * Configuration manager for handling application settings from multiple sources.
- * Supports properties files, environment variables, and system properties.
+ * Manages application configuration properties
  */
 public final class ConfigurationManager {
     private static final Logger logger = LoggerFactory.getLogger(ConfigurationManager.class);
-    private static final ConfigurationManager INSTANCE = new ConfigurationManager();
-    
-    private final Map<String, String> configuration = new ConcurrentHashMap<>();
-    private final Map<String, Function<String, ?>> typeConverters = new HashMap<>();
-    
+    private static final Map<String, String> properties = new ConcurrentHashMap<>();
+    private static boolean initialized = false;
+
     private ConfigurationManager() {
-        initializeTypeConverters();
-        loadConfiguration();
+        throw new AssertionError("ConfigurationManager class should not be instantiated");
     }
-    
+
     /**
-     * Initialize type converters for different data types
+     * Initialize configuration manager
      */
-    private void initializeTypeConverters() {
-        typeConverters.put("String", value -> value);
-        typeConverters.put("Integer", Integer::parseInt);
-        typeConverters.put("Long", Long::parseLong);
-        typeConverters.put("Double", Double::parseDouble);
-        typeConverters.put("Boolean", Boolean::parseBoolean);
-    }
-    
-    /**
-     * Load configuration from all sources
-     */
-    private void loadConfiguration() {
+    public static synchronized void initialize() throws IOException {
+        if (initialized) {
+            logger.warn("ConfigurationManager already initialized");
+            return;
+        }
+
         try {
-            // Load from properties file
-            loadPropertiesFile();
-            
-            // Load from environment variables
-            loadEnvironmentVariables();
-            
-            // Load from system properties
-            loadSystemProperties();
-            
-            logger.info("Configuration loaded successfully");
-        } catch (Exception e) {
-            logger.error("Failed to load configuration", e);
-            throw new RuntimeException("Configuration loading failed", e);
-        }
-    }
-    
-    /**
-     * Load properties from application.properties file
-     */
-    private void loadPropertiesFile() throws IOException {
-        Properties properties = new Properties();
-        try (InputStream input = getClass().getClassLoader().getResourceAsStream("application.properties")) {
-            if (input != null) {
-                properties.load(input);
-                properties.forEach((key, value) -> configuration.put(key.toString(), value.toString()));
+            // Load application.properties
+            Properties appProps = new Properties();
+            try (InputStream input = ConfigurationManager.class.getClassLoader()
+                    .getResourceAsStream("application.properties")) {
+                if (input == null) {
+                    throw new IOException("application.properties not found");
+                }
+                appProps.load(input);
             }
+
+            // Convert Properties to Map
+            appProps.forEach((key, value) -> properties.put(key.toString(), value.toString()));
+
+            // Add environment-specific overrides if present
+            String env = System.getProperty("app.environment", "development");
+            String envPropsFile = "application-" + env + ".properties";
+
+            try (InputStream envInput = ConfigurationManager.class.getClassLoader()
+                    .getResourceAsStream(envPropsFile)) {
+                if (envInput != null) {
+                    Properties envProps = new Properties();
+                    envProps.load(envInput);
+                    envProps.forEach((key, value) -> properties.put(key.toString(), value.toString()));
+                    logger.info("Loaded environment-specific properties from: {}", envPropsFile);
+                }
+            }
+
+            // Add system property overrides
+            System.getProperties().forEach((key, value) -> {
+                String keyStr = key.toString();
+                if (keyStr.startsWith("app.")) {
+                    properties.put(keyStr.substring(4), value.toString());
+                }
+            });
+
+            initialized = true;
+            logger.info("ConfigurationManager initialized successfully");
+        } catch (Exception e) {
+            logger.error("Error initializing ConfigurationManager", e);
+            throw e;
         }
     }
-    
+
     /**
-     * Load configuration from environment variables
+     * Get property value
      */
-    private void loadEnvironmentVariables() {
-        System.getenv().forEach((key, value) -> {
-            // Convert environment variable names to property format
-            String propertyKey = key.toLowerCase().replace('_', '.');
-            configuration.put(propertyKey, value);
-        });
-    }
-    
-    /**
-     * Load configuration from system properties
-     */
-    private void loadSystemProperties() {
-        System.getProperties().forEach((key, value) -> 
-            configuration.put(key.toString(), value.toString()));
-    }
-    
-    /**
-     * Get configuration value with type conversion
-     */
-    @SuppressWarnings("unchecked")
-    public <T> T get(String key, Class<T> type, T defaultValue) {
-        String value = configuration.get(key);
-        if (value == null) {
-            return defaultValue;
+    public static String getProperty(String key) {
+        if (!initialized) {
+            throw new IllegalStateException("ConfigurationManager not initialized");
         }
-        
+        return properties.get(key);
+    }
+
+    /**
+     * Get property value with default
+     */
+    public static String getProperty(String key, String defaultValue) {
+        if (!initialized) {
+            throw new IllegalStateException("ConfigurationManager not initialized");
+        }
+        return properties.getOrDefault(key, defaultValue);
+    }
+
+    /**
+     * Get integer property value
+     */
+    public static int getIntProperty(String key, int defaultValue) {
+        String value = getProperty(key);
         try {
-            Function<String, ?> converter = typeConverters.get(type.getSimpleName());
-            if (converter == null) {
-                throw new IllegalArgumentException("Unsupported type: " + type.getSimpleName());
-            }
-            return (T) converter.apply(value);
-        } catch (Exception e) {
-            logger.warn("Failed to convert value for key: {}. Using default value.", key, e);
+            return value != null ? Integer.parseInt(value) : defaultValue;
+        } catch (NumberFormatException e) {
+            logger.warn("Invalid integer property value for key: {}", key);
             return defaultValue;
         }
     }
-    
+
     /**
-     * Get string configuration value
+     * Get boolean property value
      */
-    public String getString(String key, String defaultValue) {
-        return get(key, String.class, defaultValue);
+    public static boolean getBooleanProperty(String key, boolean defaultValue) {
+        String value = getProperty(key);
+        return value != null ? Boolean.parseBoolean(value) : defaultValue;
     }
-    
+
     /**
-     * Get integer configuration value
+     * Check if property exists
      */
-    public int getInt(String key, int defaultValue) {
-        return get(key, Integer.class, defaultValue);
-    }
-    
-    /**
-     * Get long configuration value
-     */
-    public long getLong(String key, long defaultValue) {
-        return get(key, Long.class, defaultValue);
-    }
-    
-    /**
-     * Get double configuration value
-     */
-    public double getDouble(String key, double defaultValue) {
-        return get(key, Double.class, defaultValue);
-    }
-    
-    /**
-     * Get boolean configuration value
-     */
-    public boolean getBoolean(String key, boolean defaultValue) {
-        return get(key, Boolean.class, defaultValue);
-    }
-    
-    /**
-     * Set configuration value
-     */
-    public void set(String key, String value) {
-        configuration.put(key, value);
-        logger.debug("Configuration updated - key: {}, value: {}", key, value);
-    }
-    
-    /**
-     * Check if configuration contains key
-     */
-    public boolean containsKey(String key) {
-        return configuration.containsKey(key);
-    }
-    
-    /**
-     * Remove configuration value
-     */
-    public void remove(String key) {
-        configuration.remove(key);
-        logger.debug("Configuration removed - key: {}", key);
-    }
-    
-    /**
-     * Clear all configuration values
-     */
-    public void clear() {
-        configuration.clear();
-        logger.info("Configuration cleared");
-    }
-    
-    /**
-     * Reload configuration from all sources
-     */
-    public void reload() {
-        clear();
-        loadConfiguration();
-        logger.info("Configuration reloaded");
-    }
-    
-    /**
-     * Get configuration value with validation
-     */
-    public <T> T getValidated(String key, Class<T> type, T defaultValue, Function<T, Boolean> validator) {
-        T value = get(key, type, defaultValue);
-        if (!validator.apply(value)) {
-            logger.warn("Validation failed for key: {}. Using default value.", key);
-            return defaultValue;
+    public static boolean hasProperty(String key) {
+        if (!initialized) {
+            throw new IllegalStateException("ConfigurationManager not initialized");
         }
-        return value;
+        return properties.containsKey(key);
     }
-    
+
     /**
-     * Get all configuration keys
+     * Get all properties
      */
-    public Set<String> getKeys() {
-        return new HashSet<>(configuration.keySet());
+    public static Map<String, String> getAllProperties() {
+        if (!initialized) {
+            throw new IllegalStateException("ConfigurationManager not initialized");
+        }
+        return new ConcurrentHashMap<>(properties);
     }
-    
+
     /**
-     * Get configuration subset by prefix
+     * Reload configuration
      */
-    public Map<String, String> getSubset(String prefix) {
-        return configuration.entrySet().stream()
-            .filter(e -> e.getKey().startsWith(prefix))
-            .collect(Collectors.toMap(
-                e -> e.getKey().substring(prefix.length()),
-                Map.Entry::getValue
-            ));
-    }
-    
-    /**
-     * Get singleton instance
-     */
-    public static ConfigurationManager getInstance() {
-        return INSTANCE;
+    public static synchronized void reload() throws IOException {
+        logger.info("Reloading configuration");
+        properties.clear();
+        initialized = false;
+        initialize();
     }
 }

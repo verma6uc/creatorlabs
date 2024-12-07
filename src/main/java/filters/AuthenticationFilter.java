@@ -1,171 +1,146 @@
 package filters;
 
-import java.io.IOException;
-import java.util.Set;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import jakarta.servlet.Filter;
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.FilterConfig;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.ServletRequest;
-import jakarta.servlet.ServletResponse;
-import jakarta.servlet.annotation.WebFilter;
+import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import utils.ConfigurationManager;
-import utils.ResponseUtil;
+import jakarta.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import utils.Constants;
+import utils.SecurityUtil;
 import utils.SessionManager;
+import utils.ResponseUtil;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 
 /**
- * Filter for handling authentication and session validation.
- * Protects routes that require authentication.
+ * Filter to handle authentication for protected routes
  */
-@WebFilter("/*")
 public class AuthenticationFilter implements Filter {
     private static final Logger logger = LoggerFactory.getLogger(AuthenticationFilter.class);
-    private static final SessionManager sessionManager = SessionManager.getInstance();
-    private static final ConfigurationManager config = ConfigurationManager.getInstance();
-    
-    // Paths that don't require authentication
-    private static final Set<String> PUBLIC_PATHS = Set.of(
+
+    private static final List<String> PUBLIC_PATHS = Arrays.asList(
         "/login",
         "/register",
         "/forgot-password",
         "/reset-password",
         "/static",
-        "/favicon.ico",
-        "/error",
-        "/health"
-    );
-
-    // API paths that use token authentication instead of session
-    private static final Set<String> API_PATHS = Set.of(
-        "/api/v1"
+        "/favicon.ico"
     );
 
     @Override
     public void init(FilterConfig filterConfig) throws ServletException {
-        logger.info("Initializing Authentication Filter");
+        logger.info("Initializing AuthenticationFilter");
     }
 
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
-        
         HttpServletRequest httpRequest = (HttpServletRequest) request;
         HttpServletResponse httpResponse = (HttpServletResponse) response;
-        
+
         String path = httpRequest.getRequestURI().substring(httpRequest.getContextPath().length());
-        
-        try {
-            // Skip authentication for public paths
-            if (isPublicPath(path)) {
-                chain.doFilter(request, response);
-                return;
-            }
-            
-            // Handle API authentication
-            if (isApiPath(path)) {
-                handleApiAuthentication(httpRequest, httpResponse, chain);
-                return;
-            }
-            
-            // Handle web authentication
-            handleWebAuthentication(httpRequest, httpResponse, chain);
-            
-        } catch (Exception e) {
-            logger.error("Authentication error", e);
-            handleAuthenticationError(httpRequest, httpResponse);
+
+        // Allow public paths
+        if (isPublicPath(path)) {
+            chain.doFilter(request, response);
+            return;
         }
+
+        // Check for API requests
+        boolean isApiRequest = path.startsWith("/api/");
+
+        // Get session and token
+        HttpSession session = httpRequest.getSession(false);
+        String token = session != null ? (String) session.getAttribute("token") : null;
+
+        // Validate session and token
+        if (session == null || token == null || !SecurityUtil.validateToken(token)) {
+            logger.debug("Invalid or missing session/token for path: {}", path);
+            
+            if (isApiRequest) {
+                ResponseUtil.sendUnauthorizedResponse(httpResponse);
+            } else {
+                // Store the requested URL for redirect after login
+                String requestedUrl = httpRequest.getRequestURL().toString();
+                String queryString = httpRequest.getQueryString();
+                if (queryString != null) {
+                    requestedUrl += "?" + queryString;
+                }
+                
+                session = httpRequest.getSession(true);
+                session.setAttribute("requestedUrl", requestedUrl);
+                
+                httpResponse.sendRedirect(httpRequest.getContextPath() + "/login");
+            }
+            return;
+        }
+
+        // Update session access time
+        SessionManager.updateSessionAccess(token);
+
+        // Add user information to request attributes
+        String userId = SecurityUtil.getUserIdFromToken(token);
+        httpRequest.setAttribute("userId", userId);
+        httpRequest.setAttribute("token", token);
+
+        // Check for session timeout
+        if (session.getMaxInactiveInterval() > 0 && 
+            (System.currentTimeMillis() - session.getLastAccessedTime()) > 
+            (session.getMaxInactiveInterval() * 1000L)) {
+            
+            logger.debug("Session timed out for user: {}", userId);
+            session.invalidate();
+            
+            if (isApiRequest) {
+                ResponseUtil.sendErrorResponse(httpResponse, HttpServletResponse.SC_UNAUTHORIZED, 
+                    Constants.Messages.SESSION_EXPIRED);
+            } else {
+                httpResponse.sendRedirect(httpRequest.getContextPath() + "/login");
+            }
+            return;
+        }
+
+        // CSRF protection for state-changing requests
+        if (isStateChangingRequest(httpRequest)) {
+            String csrfToken = httpRequest.getHeader("X-CSRF-TOKEN");
+            String sessionCsrfToken = (String) session.getAttribute("csrfToken");
+
+            if (csrfToken == null || !csrfToken.equals(sessionCsrfToken)) {
+                logger.warn("CSRF token validation failed for user: {}", userId);
+                
+                if (isApiRequest) {
+                    ResponseUtil.sendErrorResponse(httpResponse, HttpServletResponse.SC_FORBIDDEN, 
+                        "Invalid CSRF token");
+                } else {
+                    httpResponse.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid CSRF token");
+                }
+                return;
+            }
+        }
+
+        chain.doFilter(request, response);
+    }
+
+    @Override
+    public void destroy() {
+        logger.info("Destroying AuthenticationFilter");
     }
 
     /**
-     * Check if path is public
+     * Check if the path is public
      */
     private boolean isPublicPath(String path) {
         return PUBLIC_PATHS.stream().anyMatch(path::startsWith);
     }
 
     /**
-     * Check if path is API
+     * Check if the request is state-changing (non-GET)
      */
-    private boolean isApiPath(String path) {
-        return API_PATHS.stream().anyMatch(path::startsWith);
-    }
-
-    /**
-     * Handle API authentication
-     */
-    private void handleApiAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
-            throws IOException, ServletException {
-        
-        String apiKey = request.getHeader("X-API-Key");
-        if (apiKey == null || apiKey.trim().isEmpty()) {
-            ResponseUtil.sendUnauthorized(response, "API key is required");
-            return;
-        }
-        
-        // Validate API key (implement your own validation logic)
-        if (!isValidApiKey(apiKey)) {
-            ResponseUtil.sendUnauthorized(response, "Invalid API key");
-            return;
-        }
-        
-        chain.doFilter(request, response);
-    }
-
-    /**
-     * Handle web authentication
-     */
-    private void handleWebAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
-            throws IOException, ServletException {
-        
-        // Check if user is authenticated
-        if (!sessionManager.validateSession(request)) {
-            // Store original request URL for redirect after login
-            String originalUrl = request.getRequestURL().toString();
-            if (request.getQueryString() != null) {
-                originalUrl += "?" + request.getQueryString();
-            }
-            request.getSession().setAttribute("redirectUrl", originalUrl);
-            
-            // Redirect to login page
-            response.sendRedirect(request.getContextPath() + "/login");
-            return;
-        }
-        
-        // User is authenticated, proceed with request
-        chain.doFilter(request, response);
-    }
-
-    /**
-     * Handle authentication error
-     */
-    private void handleAuthenticationError(HttpServletRequest request, HttpServletResponse response)
-            throws IOException {
-        
-        if (isApiPath(request.getRequestURI())) {
-            ResponseUtil.sendServerError(response, "Authentication error occurred");
-        } else {
-            response.sendRedirect(request.getContextPath() + "/error");
-        }
-    }
-
-    /**
-     * Validate API key
-     */
-    private boolean isValidApiKey(String apiKey) {
-        // Implement your API key validation logic here
-        // This could involve checking against a database or configuration
-        String validApiKey = config.getString("api.key", "");
-        return !validApiKey.isEmpty() && validApiKey.equals(apiKey);
-    }
-
-    @Override
-    public void destroy() {
-        logger.info("Destroying Authentication Filter");
+    private boolean isStateChangingRequest(HttpServletRequest request) {
+        String method = request.getMethod();
+        return !method.equals("GET") && !method.equals("HEAD") && !method.equals("OPTIONS");
     }
 }

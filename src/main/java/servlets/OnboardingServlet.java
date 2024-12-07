@@ -1,253 +1,181 @@
 package servlets;
 
-import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-
 import com.google.gson.JsonObject;
+import utils.Constants.Onboarding;
+import utils.ValidationUtil;
+import utils.ValidationUtil.ValidationResult;
+import utils.ResponseUtil;
+import utils.SecurityUtil;
+import utils.SessionManager;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import utils.Constants.Onboarding;
-import utils.DatabaseUtils;
-import utils.ResponseUtil;
-import utils.ValidationUtil.ValidationResult;
+import java.io.IOException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Servlet for handling the onboarding process.
- * Manages user onboarding flow and data persistence.
+ * Servlet for handling the onboarding process
  */
 @WebServlet("/onboarding/*")
 public class OnboardingServlet extends BaseServlet {
-    private static final long serialVersionUID = 1L;
-
-    @Override
-    protected void doPost(HttpServletRequest request, HttpServletResponse response) 
-            throws ServletException, IOException {
-        
-        logRequest(request);
-        
-        if (!validateCsrfToken(request)) {
-            handleException(request, response, 
-                new SecurityException("Invalid CSRF token"), 
-                "Security validation failed");
-            return;
-        }
-
-        String pathInfo = request.getPathInfo();
-        try {
-            switch (pathInfo) {
-                case "/save-step":
-                    handleStepSave(request, response);
-                    break;
-                case "/validate-step":
-                    handleStepValidation(request, response);
-                    break;
-                case "/complete":
-                    handleOnboardingComplete(request, response);
-                    break;
-                default:
-                    response.sendError(HttpServletResponse.SC_NOT_FOUND);
-            }
-        } catch (Exception e) {
-            handleException(request, response, e, "Error processing onboarding request");
-        }
-    }
-
-    private void handleStepSave(HttpServletRequest request, HttpServletResponse response) 
-            throws ServletException, IOException {
-        String step = getRequiredParameter(request, "step");
-        String data = getRequiredParameter(request, "data");
-        
-        ValidationResult validation = validateStepData(step, data);
-        if (!validation.isValid()) {
-            handleValidationErrors(request, response, validation);
-            return;
-        }
-
-        // Save step data to session
-        String userId = getCurrentUserId(request)
-            .orElseThrow(() -> new IllegalStateException("User not authenticated"));
-        
-        request.getSession().setAttribute("step_" + step, data);
-        
-        // Update current step
-        int currentStep = Optional.ofNullable(request.getSession().getAttribute("currentStep"))
-            .map(obj -> (Integer) obj)
-            .orElse(1);
-        
-        int nextStep = Integer.parseInt(step) + 1;
-        request.getSession().setAttribute("currentStep", nextStep);
-        
-        JsonObject jsonResponse = new JsonObject();
-        jsonResponse.addProperty("success", true);
-        jsonResponse.addProperty("nextStep", nextStep);
-        
-        ResponseUtil.sendSuccess(response, jsonResponse);
-        
-        logger.info("Saved onboarding step {} for user {}", step, userId);
-    }
-
-    private void handleStepValidation(HttpServletRequest request, HttpServletResponse response) 
-            throws ServletException, IOException {
-        String step = getRequiredParameter(request, "step");
-        String data = getRequiredParameter(request, "data");
-        
-        ValidationResult validation = validateStepData(step, data);
-        
-        JsonObject jsonResponse = new JsonObject();
-        jsonResponse.addProperty("valid", validation.isValid());
-        
-        if (!validation.isValid()) {
-            JsonObject errors = new JsonObject();
-            validation.getErrors().forEach(errors::addProperty);
-            jsonResponse.add("errors", errors);
-        }
-        
-        ResponseUtil.sendSuccess(response, jsonResponse);
-    }
-
-    private void handleOnboardingComplete(HttpServletRequest request, HttpServletResponse response) 
-            throws ServletException, IOException {
-        String userId = getCurrentUserId(request)
-            .orElseThrow(() -> new IllegalStateException("User not authenticated"));
-        
-        // Validate all required steps are complete
-        ValidationResult validation = validateAllSteps(request);
-        if (!validation.isValid()) {
-            handleValidationErrors(request, response, validation);
-            return;
-        }
-
-        // Save onboarding data to database
-        try {
-            saveOnboardingData(request, userId);
-            request.getSession().setAttribute("onboardingComplete", true);
-            
-            JsonObject jsonResponse = new JsonObject();
-            jsonResponse.addProperty("success", true);
-            jsonResponse.addProperty("redirect", "/dashboard");
-            
-            ResponseUtil.sendSuccess(response, jsonResponse);
-            
-            logger.info("Completed onboarding for user {}", userId);
-        } catch (Exception e) {
-            logger.error("Failed to save onboarding data for user {}", userId, e);
-            handleException(request, response, e, "Failed to complete onboarding");
-        }
-    }
-
-    private ValidationResult validateStepData(String step, String data) {
-        ValidationResult result = new ValidationResult();
-        
-        switch (step) {
-            case "1": // Brand Identity
-                if (!Onboarding.BRAND_IDENTITIES.contains(data.toUpperCase())) {
-                    result.addError("brandIdentity", "Invalid brand identity selection");
-                }
-                break;
-            
-            case "2": // Workspace Setup
-                JsonObject workspaceData = gson.fromJson(data, JsonObject.class);
-                String devFocus = workspaceData.get("developmentFocus").getAsString();
-                String teamCollab = workspaceData.get("teamCollaboration").getAsString();
-                
-                if (!Onboarding.DEVELOPMENT_FOCUSES.contains(devFocus.toUpperCase())) {
-                    result.addError("developmentFocus", "Invalid development focus");
-                }
-                if (!Onboarding.TEAM_COLLABORATIONS.contains(teamCollab.toUpperCase())) {
-                    result.addError("teamCollaboration", "Invalid team collaboration style");
-                }
-                break;
-            
-            case "3": // AI Communication
-                if (!Onboarding.AI_COMMUNICATION_STYLES.contains(data.toUpperCase())) {
-                    result.addError("communicationStyle", "Invalid communication style");
-                }
-                break;
-            
-            default:
-                result.addError("step", "Invalid step number");
-        }
-        
-        return result;
-    }
-
-    private ValidationResult validateAllSteps(HttpServletRequest request) {
-        ValidationResult result = new ValidationResult();
-        
-        for (int i = 1; i <= Onboarding.TOTAL_STEPS; i++) {
-            String stepData = (String) request.getSession().getAttribute("step_" + i);
-            if (stepData == null) {
-                result.addError("step_" + i, "Step " + i + " is incomplete");
-            }
-        }
-        
-        return result;
-    }
-
-    private void saveOnboardingData(HttpServletRequest request, String userId) throws SQLException {
-        Map<String, String> onboardingData = new HashMap<>();
-        for (int i = 1; i <= Onboarding.TOTAL_STEPS; i++) {
-            String stepData = (String) request.getSession().getAttribute("step_" + i);
-            onboardingData.put("step_" + i, stepData);
-        }
-        
-        // Save to database using DatabaseUtils
-        String sql = """
-            INSERT INTO onboarding_data (
-                id, user_id, brand_identity, development_focus, 
-                team_collaboration, ai_communication_style
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """;
-        
-        try (Connection conn = DatabaseUtils.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            
-            stmt.setObject(1, UUID.randomUUID());
-            stmt.setString(2, userId);
-            stmt.setString(3, onboardingData.get("step_1"));
-            
-            JsonObject workspaceData = gson.fromJson(onboardingData.get("step_2"), JsonObject.class);
-            stmt.setString(4, workspaceData.get("developmentFocus").getAsString());
-            stmt.setString(5, workspaceData.get("teamCollaboration").getAsString());
-            
-            stmt.setString(6, onboardingData.get("step_3"));
-            
-            stmt.executeUpdate();
-        }
-    }
+    private static final Logger logger = LoggerFactory.getLogger(OnboardingServlet.class);
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) 
             throws ServletException, IOException {
-        
-        if (!isAuthenticated(request)) {
-            response.sendRedirect(request.getContextPath() + "/login");
+        if (!requireAuthentication(request, response)) {
             return;
         }
+
+        String pathInfo = request.getPathInfo();
         
-        // Return current onboarding state
-        int currentStep = Optional.ofNullable(request.getSession().getAttribute("currentStep"))
-            .map(obj -> (Integer) obj)
-            .orElse(1);
-        
-        JsonObject jsonResponse = new JsonObject();
-        jsonResponse.addProperty("currentStep", currentStep);
-        
-        // Add saved data for the current step if it exists
-        String stepData = (String) request.getSession().getAttribute("step_" + currentStep);
-        if (stepData != null) {
-            jsonResponse.add("stepData", gson.fromJson(stepData, JsonObject.class));
+        if (pathInfo == null || pathInfo.equals("/")) {
+            // Show first step by default
+            showOnboardingStep(1, request, response);
+            return;
         }
+
+        try {
+            int step = Integer.parseInt(pathInfo.substring(1));
+            ValidationResult validation = ValidationUtil.validateOnboardingStep(step);
+            
+            if (!validation.isValid()) {
+                response.sendRedirect("/onboarding/1");
+                return;
+            }
+
+            showOnboardingStep(step, request, response);
+        } catch (NumberFormatException e) {
+            sendNotFoundResponse(response);
+        }
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        if (!requireAuthentication(request, response)) {
+            return;
+        }
+
+        String pathInfo = request.getPathInfo();
         
-        ResponseUtil.sendSuccess(response, jsonResponse);
+        if (pathInfo == null || pathInfo.equals("/")) {
+            sendErrorResponse(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid request");
+            return;
+        }
+
+        try {
+            int step = Integer.parseInt(pathInfo.substring(1));
+            ValidationResult validation = ValidationUtil.validateOnboardingStep(step);
+            
+            if (!validation.isValid()) {
+                sendValidationErrorResponse(response, validation);
+                return;
+            }
+
+            processOnboardingStep(step, request, response);
+        } catch (NumberFormatException e) {
+            sendNotFoundResponse(response);
+        }
+    }
+
+    private void showOnboardingStep(int step, HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        String userId = getAuthenticatedUserId(request);
+        logger.info("Showing onboarding step {} for user {}", step, userId);
+
+        switch (step) {
+            case 1 -> {
+                request.setAttribute("brandIdentities", Onboarding.BRAND_IDENTITIES);
+                request.getRequestDispatcher("/WEB-INF/views/onboarding/step1.jsp").forward(request, response);
+            }
+            case 2 -> {
+                request.setAttribute("developmentFocuses", Onboarding.DEVELOPMENT_FOCUSES);
+                request.getRequestDispatcher("/WEB-INF/views/onboarding/step2.jsp").forward(request, response);
+            }
+            case 3 -> {
+                request.setAttribute("teamCollaborations", Onboarding.TEAM_COLLABORATIONS);
+                request.getRequestDispatcher("/WEB-INF/views/onboarding/step3.jsp").forward(request, response);
+            }
+            case 4 -> {
+                request.setAttribute("aiCommunicationStyles", Onboarding.AI_COMMUNICATION_STYLES);
+                request.getRequestDispatcher("/WEB-INF/views/onboarding/step4.jsp").forward(request, response);
+            }
+            default -> sendNotFoundResponse(response);
+        }
+    }
+
+    private void processOnboardingStep(int step, HttpServletRequest request, HttpServletResponse response) 
+            throws IOException {
+        String userId = getAuthenticatedUserId(request);
+        JsonObject jsonResponse = new JsonObject();
+
+        try {
+            ValidationResult validation = switch (step) {
+                case 1 -> validateBrandIdentity(request);
+                case 2 -> validateDevelopmentFocus(request);
+                case 3 -> validateTeamCollaboration(request);
+                case 4 -> validateAiCommunication(request);
+                default -> ValidationResult.failure("Invalid step");
+            };
+
+            if (!validation.isValid()) {
+                sendValidationErrorResponse(response, validation);
+                return;
+            }
+
+            saveOnboardingProgress(step, request);
+            
+            jsonResponse.addProperty("success", true);
+            jsonResponse.addProperty("nextStep", step < Onboarding.TOTAL_STEPS ? step + 1 : -1);
+            
+            logger.info("Successfully processed step {} for user {}", step, userId);
+            sendSuccessResponse(response, jsonResponse);
+        } catch (Exception e) {
+            logger.error("Error processing onboarding step {} for user {}", step, userId, e);
+            sendInternalErrorResponse(response);
+        }
+    }
+
+    private ValidationResult validateBrandIdentity(HttpServletRequest request) {
+        String brandIdentity = request.getParameter("brandIdentity");
+        return ValidationUtil.validateOnboardingSelection(brandIdentity, Onboarding.BRAND_IDENTITIES);
+    }
+
+    private ValidationResult validateDevelopmentFocus(HttpServletRequest request) {
+        String developmentFocus = request.getParameter("developmentFocus");
+        return ValidationUtil.validateOnboardingSelection(developmentFocus, Onboarding.DEVELOPMENT_FOCUSES);
+    }
+
+    private ValidationResult validateTeamCollaboration(HttpServletRequest request) {
+        String teamCollaboration = request.getParameter("teamCollaboration");
+        return ValidationUtil.validateOnboardingSelection(teamCollaboration, Onboarding.TEAM_COLLABORATIONS);
+    }
+
+    private ValidationResult validateAiCommunication(HttpServletRequest request) {
+        String aiCommunication = request.getParameter("aiCommunication");
+        return ValidationUtil.validateOnboardingSelection(aiCommunication, Onboarding.AI_COMMUNICATION_STYLES);
+    }
+
+    private void saveOnboardingProgress(int step, HttpServletRequest request) {
+        String userId = getAuthenticatedUserId(request);
+        String selection = request.getParameter(getParameterName(step));
+        
+        // TODO: Implement actual database storage
+        logger.info("Saving onboarding progress - Step: {}, User: {}, Selection: {}", 
+            step, userId, selection);
+    }
+
+    private String getParameterName(int step) {
+        return switch (step) {
+            case 1 -> "brandIdentity";
+            case 2 -> "developmentFocus";
+            case 3 -> "teamCollaboration";
+            case 4 -> "aiCommunication";
+            default -> throw new IllegalArgumentException("Invalid step: " + step);
+        };
     }
 }

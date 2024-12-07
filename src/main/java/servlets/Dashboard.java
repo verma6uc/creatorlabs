@@ -1,307 +1,244 @@
 package servlets;
 
+import com.google.gson.JsonObject;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import utils.Constants;
+import utils.DatabaseUtils;
+import utils.ResponseUtil;
+import utils.SecurityUtil;
+
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import com.google.gson.JsonObject;
-
-import jakarta.servlet.ServletException;
-import jakarta.servlet.annotation.WebServlet;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import utils.DatabaseUtils;
-import utils.ResponseUtil;
+import java.util.*;
 
 /**
- * Servlet for handling dashboard functionality.
- * Displays user-specific dashboard data and manages dashboard interactions.
+ * Servlet for handling dashboard requests
  */
 @WebServlet("/dashboard/*")
 public class Dashboard extends BaseServlet {
-    private static final long serialVersionUID = 1L;
+    private static final Logger logger = LoggerFactory.getLogger(Dashboard.class);
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) 
             throws ServletException, IOException {
-        
-        String userId = getCurrentUserId(request)
-            .orElseThrow(() -> new IllegalStateException("User not authenticated"));
-        
-        // Check if onboarding is complete
-        Boolean onboardingComplete = (Boolean) request.getSession()
-            .getAttribute("onboardingComplete");
-        
-        if (onboardingComplete == null || !onboardingComplete) {
-            logger.debug("User {} has not completed onboarding", userId);
-            response.sendRedirect(request.getContextPath() + "/onboarding");
+        if (!requireAuthentication(request, response)) {
             return;
         }
 
+        String userId = getAuthenticatedUserId(request);
+        String path = request.getPathInfo();
+
         try {
-            String pathInfo = request.getPathInfo();
-            if (pathInfo == null || pathInfo.equals("/")) {
-                // Main dashboard view
-                handleMainDashboard(request, response, userId);
+            if (path == null || path.equals("/")) {
+                handleDashboardHome(request, response);
+            } else if (path.equals("/stats")) {
+                handleStats(request, response);
+            } else if (path.equals("/activities")) {
+                handleActivities(request, response);
+            } else if (path.equals("/settings")) {
+                handleSettings(request, response);
             } else {
-                // Handle specific dashboard sections
-                switch (pathInfo) {
-                    case "/stats":
-                        handleStats(request, response, userId);
-                        break;
-                    case "/projects":
-                        handleProjects(request, response, userId);
-                        break;
-                    case "/settings":
-                        handleSettings(request, response, userId);
-                        break;
-                    default:
-                        response.sendError(HttpServletResponse.SC_NOT_FOUND);
-                }
+                sendNotFoundResponse(response);
             }
         } catch (Exception e) {
-            handleException(request, response, e, "Error loading dashboard");
+            logger.error("Error handling dashboard request", e);
+            sendInternalErrorResponse(response);
         }
     }
 
-    private void handleMainDashboard(HttpServletRequest request, HttpServletResponse response, 
-            String userId) throws ServletException, IOException {
+    /**
+     * Handle dashboard home page
+     */
+    private void handleDashboardHome(HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        String userId = getAuthenticatedUserId(request);
+        
         try {
-            Map<String, Object> dashboardData = new HashMap<>();
+            Map<String, Object> dashboardData = getDashboardData(userId);
             
-            // Get user preferences
-            dashboardData.put("preferences", getUserPreferences(userId));
-            
-            // Get recent activity
-            dashboardData.put("recentActivity", getRecentActivity(userId));
-            
-            // Get project summary
-            dashboardData.put("projectSummary", getProjectSummary(userId));
-            
-            if (isApiRequest(request)) {
-                ResponseUtil.sendSuccess(response, dashboardData);
+            if (request.getHeader("X-Requested-With") != null) {
+                sendSuccessResponse(response, dashboardData);
             } else {
                 request.setAttribute("dashboardData", dashboardData);
-                forwardToView(request, response, "dashboard/index");
+                request.getRequestDispatcher(Constants.View.DASHBOARD).forward(request, response);
             }
-            
         } catch (SQLException e) {
-            handleException(request, response, e, "Error loading dashboard data");
+            logger.error("Error fetching dashboard data", e);
+            sendInternalErrorResponse(response);
         }
     }
 
-    private void handleStats(HttpServletRequest request, HttpServletResponse response, 
-            String userId) throws IOException {
+    /**
+     * Handle statistics request
+     */
+    private void handleStats(HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        String userId = getAuthenticatedUserId(request);
+        
         try {
-            Map<String, Object> stats = new HashMap<>();
-            stats.put("totalProjects", getTotalProjects(userId));
-            stats.put("activeProjects", getActiveProjects(userId));
-            stats.put("completedProjects", getCompletedProjects(userId));
-            
-            ResponseUtil.sendSuccess(response, stats);
+            List<Map<String, Object>> stats = getStats(userId);
+            sendSuccessResponse(response, stats);
         } catch (SQLException e) {
-            handleException(request, response, e, "Error loading statistics");
+            logger.error("Error fetching stats", e);
+            sendInternalErrorResponse(response);
         }
     }
 
-    private void handleProjects(HttpServletRequest request, HttpServletResponse response, 
-            String userId) throws IOException {
+    /**
+     * Handle activities request
+     */
+    private void handleActivities(HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        String userId = getAuthenticatedUserId(request);
+        
         try {
-            List<Map<String, Object>> projects = getProjects(userId);
-            ResponseUtil.sendSuccess(response, projects);
+            Map<String, Object> activities = getActivities(userId);
+            sendSuccessResponse(response, activities);
         } catch (SQLException e) {
-            handleException(request, response, e, "Error loading projects");
+            logger.error("Error fetching activities", e);
+            sendInternalErrorResponse(response);
         }
     }
 
-    private void handleSettings(HttpServletRequest request, HttpServletResponse response, 
-            String userId) throws ServletException, IOException {
+    /**
+     * Handle settings request
+     */
+    private void handleSettings(HttpServletRequest request, HttpServletResponse response) 
+            throws ServletException, IOException {
+        String userId = getAuthenticatedUserId(request);
+        
         try {
-            Map<String, Object> settings = getUserSettings(userId);
+            Map<String, Object> settings = getSettings(userId);
             
-            if (isApiRequest(request)) {
-                ResponseUtil.sendSuccess(response, settings);
+            if (request.getHeader("X-Requested-With") != null) {
+                sendSuccessResponse(response, settings);
             } else {
                 request.setAttribute("settings", settings);
-                forwardToView(request, response, "dashboard/settings");
+                request.getRequestDispatcher(Constants.View.SETTINGS).forward(request, response);
             }
         } catch (SQLException e) {
-            handleException(request, response, e, "Error loading settings");
+            logger.error("Error fetching settings", e);
+            sendInternalErrorResponse(response);
         }
     }
 
-    private Map<String, Object> getUserPreferences(String userId) throws SQLException {
-        String sql = """
-            SELECT brand_identity, development_focus, team_collaboration, ai_communication_style 
-            FROM onboarding_data 
-            WHERE user_id = ?
+    /**
+     * Get dashboard data for user
+     */
+    private Map<String, Object> getDashboardData(String userId) throws SQLException {
+        Map<String, Object> data = new HashMap<>();
+        
+        try (Connection conn = DatabaseUtils.getConnection()) {
+            // Add user info
+            String userSql = "SELECT username, email, first_name, last_name FROM users WHERE id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(userSql)) {
+                stmt.setObject(1, UUID.fromString(userId));
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        data.put("username", rs.getString("username"));
+                        data.put("email", rs.getString("email"));
+                        data.put("firstName", rs.getString("first_name"));
+                        data.put("lastName", rs.getString("last_name"));
+                    }
+                }
+            }
+
+            // Add preferences
+            String prefSql = "SELECT * FROM user_preferences WHERE user_id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(prefSql)) {
+                stmt.setObject(1, UUID.fromString(userId));
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        Map<String, Object> preferences = new HashMap<>();
+                        preferences.put("brandIdentity", rs.getString("brand_identity"));
+                        preferences.put("developmentFocus", rs.getString("development_focus"));
+                        preferences.put("teamCollaboration", rs.getString("team_collaboration"));
+                        preferences.put("aiCommunicationStyle", rs.getString("ai_communication_style"));
+                        preferences.put("theme", rs.getString("theme"));
+                        preferences.put("notificationsEnabled", rs.getBoolean("notifications_enabled"));
+                        data.put("preferences", preferences);
+                    }
+                }
+            }
+        }
+
+        return data;
+    }
+
+    /**
+     * Get user statistics
+     */
+    private List<Map<String, Object>> getStats(String userId) throws SQLException {
+        List<Map<String, Object>> stats = new ArrayList<>();
+        // TODO: Implement statistics retrieval
+        return stats;
+    }
+
+    /**
+     * Get user activities
+     */
+    private Map<String, Object> getActivities(String userId) throws SQLException {
+        Map<String, Object> activities = new HashMap<>();
+        
+        try (Connection conn = DatabaseUtils.getConnection()) {
+            String sql = """
+                SELECT action, entity_type, created_at 
+                FROM audit_log 
+                WHERE user_id = ? 
+                ORDER BY created_at DESC 
+                LIMIT 10
             """;
             
-        try (Connection conn = DatabaseUtils.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            
-            stmt.setString(1, userId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                Map<String, Object> preferences = new HashMap<>();
-                if (rs.next()) {
-                    preferences.put("brandIdentity", rs.getString("brand_identity"));
-                    preferences.put("developmentFocus", rs.getString("development_focus"));
-                    preferences.put("teamCollaboration", rs.getString("team_collaboration"));
-                    preferences.put("aiCommunicationStyle", rs.getString("ai_communication_style"));
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setObject(1, UUID.fromString(userId));
+                try (ResultSet rs = stmt.executeQuery()) {
+                    List<Map<String, Object>> activityList = new ArrayList<>();
+                    while (rs.next()) {
+                        Map<String, Object> activity = new HashMap<>();
+                        activity.put("action", rs.getString("action"));
+                        activity.put("entityType", rs.getString("entity_type"));
+                        activity.put("createdAt", rs.getTimestamp("created_at").toInstant());
+                        activityList.add(activity);
+                    }
+                    activities.put("activities", activityList);
                 }
-                return preferences;
             }
         }
+
+        return activities;
     }
 
-    private List<Map<String, Object>> getRecentActivity(String userId) throws SQLException {
-        String sql = """
-            SELECT action, entity_type, entity_id, created_at, details 
-            FROM audit_logs 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC 
-            LIMIT 10
-            """;
-            
-        try (Connection conn = DatabaseUtils.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            
-            stmt.setString(1, userId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                List<Map<String, Object>> activities = new ArrayList<>();
-                while (rs.next()) {
-                    Map<String, Object> activity = new HashMap<>();
-                    activity.put("action", rs.getString("action"));
-                    activity.put("entityType", rs.getString("entity_type"));
-                    activity.put("entityId", rs.getString("entity_id"));
-                    activity.put("createdAt", rs.getTimestamp("created_at"));
-                    activity.put("details", gson.fromJson(rs.getString("details"), JsonObject.class));
-                    activities.add(activity);
+    /**
+     * Get user settings
+     */
+    private Map<String, Object> getSettings(String userId) throws SQLException {
+        Map<String, Object> settings = new HashMap<>();
+        
+        try (Connection conn = DatabaseUtils.getConnection()) {
+            String sql = "SELECT * FROM user_preferences WHERE user_id = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setObject(1, UUID.fromString(userId));
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        settings.put("theme", rs.getString("theme"));
+                        settings.put("notificationsEnabled", rs.getBoolean("notifications_enabled"));
+                        settings.put("brandIdentity", rs.getString("brand_identity"));
+                        settings.put("developmentFocus", rs.getString("development_focus"));
+                        settings.put("teamCollaboration", rs.getString("team_collaboration"));
+                        settings.put("aiCommunicationStyle", rs.getString("ai_communication_style"));
+                    }
                 }
-                return activities;
             }
         }
-    }
 
-    private Map<String, Object> getProjectSummary(String userId) throws SQLException {
-        String sql = """
-            SELECT status, COUNT(*) as count 
-            FROM projects 
-            WHERE user_id = ? 
-            GROUP BY status
-            """;
-            
-        try (Connection conn = DatabaseUtils.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            
-            stmt.setString(1, userId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                Map<String, Object> summary = new HashMap<>();
-                while (rs.next()) {
-                    summary.put(rs.getString("status").toLowerCase(), rs.getInt("count"));
-                }
-                return summary;
-            }
-        }
-    }
-
-    private int getTotalProjects(String userId) throws SQLException {
-        return getProjectCount(userId, null);
-    }
-
-    private int getActiveProjects(String userId) throws SQLException {
-        return getProjectCount(userId, "ACTIVE");
-    }
-
-    private int getCompletedProjects(String userId) throws SQLException {
-        return getProjectCount(userId, "COMPLETED");
-    }
-
-    private int getProjectCount(String userId, String status) throws SQLException {
-        String sql = status == null 
-            ? "SELECT COUNT(*) FROM projects WHERE user_id = ?"
-            : "SELECT COUNT(*) FROM projects WHERE user_id = ? AND status = ?";
-            
-        try (Connection conn = DatabaseUtils.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            
-            stmt.setString(1, userId);
-            if (status != null) {
-                stmt.setString(2, status);
-            }
-            
-            try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getInt(1) : 0;
-            }
-        }
-    }
-
-    private List<Map<String, Object>> getProjects(String userId) throws SQLException {
-        String sql = """
-            SELECT id, name, description, status, created_at, updated_at 
-            FROM projects 
-            WHERE user_id = ? 
-            ORDER BY updated_at DESC
-            """;
-            
-        try (Connection conn = DatabaseUtils.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            
-            stmt.setString(1, userId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                List<Map<String, Object>> projects = new ArrayList<>();
-                while (rs.next()) {
-                    Map<String, Object> project = new HashMap<>();
-                    project.put("id", rs.getString("id"));
-                    project.put("name", rs.getString("name"));
-                    project.put("description", rs.getString("description"));
-                    project.put("status", rs.getString("status"));
-                    project.put("createdAt", rs.getTimestamp("created_at"));
-                    project.put("updatedAt", rs.getTimestamp("updated_at"));
-                    projects.add(project);
-                }
-                return projects;
-            }
-        }
-    }
-
-    private Map<String, Object> getUserSettings(String userId) throws SQLException {
-        String sql = """
-            SELECT u.email, u.full_name, o.* 
-            FROM users u 
-            LEFT JOIN onboarding_data o ON u.id = o.user_id 
-            WHERE u.id = ?
-            """;
-            
-        try (Connection conn = DatabaseUtils.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            
-            stmt.setString(1, userId);
-            try (ResultSet rs = stmt.executeQuery()) {
-                Map<String, Object> settings = new HashMap<>();
-                if (rs.next()) {
-                    settings.put("email", rs.getString("email"));
-                    settings.put("fullName", rs.getString("full_name"));
-                    settings.put("brandIdentity", rs.getString("brand_identity"));
-                    settings.put("developmentFocus", rs.getString("development_focus"));
-                    settings.put("teamCollaboration", rs.getString("team_collaboration"));
-                    settings.put("aiCommunicationStyle", rs.getString("ai_communication_style"));
-                }
-                return settings;
-            }
-        }
-    }
-
-    @Override
-    protected void doPost(HttpServletRequest request, HttpServletResponse response) 
-            throws ServletException, IOException {
-        // Handle POST requests for dashboard actions
-        doGet(request, response);
+        return settings;
     }
 }

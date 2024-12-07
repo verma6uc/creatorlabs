@@ -1,298 +1,165 @@
-// Dashboard JavaScript
-
+/**
+ * Dashboard functionality
+ */
 class Dashboard {
     constructor() {
-        this.initializeEventListeners();
-        this.initializeCharts();
-        this.setupWebSocket();
+        this.initializeWebSocket();
+        this.setupEventListeners();
+        this.setupTheme();
     }
 
-    // Initialize Event Listeners
-    initializeEventListeners() {
-        // Profile Form
-        const profileForm = document.getElementById('profileForm');
-        if (profileForm) {
-            profileForm.addEventListener('submit', (e) => this.handleProfileUpdate(e));
-        }
-
-        // Password Form
-        const passwordForm = document.getElementById('passwordForm');
-        if (passwordForm) {
-            passwordForm.addEventListener('submit', (e) => this.handlePasswordChange(e));
-        }
-
-        // Delete Account Form
-        const deleteAccountForm = document.getElementById('deleteAccountForm');
-        if (deleteAccountForm) {
-            deleteAccountForm.addEventListener('submit', (e) => this.handleAccountDeletion(e));
-        }
-
-        // New Project Button
-        const newProjectBtn = document.querySelector('.btn-new-project');
-        if (newProjectBtn) {
-            newProjectBtn.addEventListener('click', () => this.showNewProjectModal());
-        }
-
-        // Project Cards
-        document.querySelectorAll('.project-card').forEach(card => {
-            card.addEventListener('click', (e) => this.handleProjectCardClick(e));
-        });
-
-        // Settings Navigation
-        document.querySelectorAll('[data-settings-nav]').forEach(link => {
-            link.addEventListener('click', (e) => this.handleSettingsNavigation(e));
-        });
-    }
-
-    // Initialize Charts and Data Visualizations
-    initializeCharts() {
-        // Project Status Chart
-        this.initializeProjectStatusChart();
+    /**
+     * Initialize WebSocket connection
+     */
+    initializeWebSocket() {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${wsProtocol}//${window.location.host}${window.contextPath}/ws/dashboard`;
         
-        // Activity Timeline
-        this.initializeActivityTimeline();
+        this.socket = new WebSocket(wsUrl);
         
-        // Progress Charts
-        this.initializeProgressCharts();
+        this.socket.onopen = () => {
+            console.log('WebSocket connection established');
+            this.sendMessage({ type: 'init' });
+        };
+
+        this.socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            this.handleWebSocketMessage(data);
+        };
+
+        this.socket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            this.showNotification('Connection error', 'error');
+        };
+
+        this.socket.onclose = () => {
+            console.log('WebSocket connection closed');
+            // Attempt to reconnect after 5 seconds
+            setTimeout(() => this.initializeWebSocket(), 5000);
+        };
     }
 
-    // WebSocket Setup for Real-time Updates
-    setupWebSocket() {
-        try {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/websocket/dashboard`;
-            
-            this.ws = new WebSocket(wsUrl);
-            
-            this.ws.onopen = () => {
-                console.log('Dashboard WebSocket connected');
-            };
-            
-            this.ws.onmessage = (event) => {
-                this.handleWebSocketMessage(JSON.parse(event.data));
-            };
-            
-            this.ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
-            
-            this.ws.onclose = () => {
-                console.log('WebSocket connection closed');
-                // Attempt to reconnect after 5 seconds
-                setTimeout(() => this.setupWebSocket(), 5000);
-            };
-        } catch (error) {
-            console.error('WebSocket setup error:', error);
+    /**
+     * Set up event listeners
+     */
+    setupEventListeners() {
+        // Notifications
+        const notificationsBtn = document.querySelector('.notifications-btn');
+        if (notificationsBtn) {
+            notificationsBtn.addEventListener('click', () => this.toggleNotifications());
         }
-    }
 
-    // Handle Profile Update
-    async handleProfileUpdate(event) {
-        event.preventDefault();
-        const form = event.target;
-        const formData = new FormData(form);
+        // User menu
+        const userMenu = document.querySelector('.user-menu');
+        if (userMenu) {
+            userMenu.addEventListener('click', () => this.toggleUserMenu());
+        }
 
-        try {
-            const response = await fetch('/dashboard/settings/profile', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify(Object.fromEntries(formData))
-            });
+        // Search
+        const searchInput = document.querySelector('.header-search input');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => this.handleSearch(e.target.value));
+        }
 
-            const data = await response.json();
-            if (data.success) {
-                this.showNotification('Profile updated successfully', 'success');
-            } else {
-                this.showNotification(data.error, 'error');
+        // Quick action buttons
+        document.querySelectorAll('.action-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.handleQuickAction(e.target.textContent.trim()));
+        });
+
+        // Theme toggle
+        const themeSelect = document.getElementById('theme');
+        if (themeSelect) {
+            themeSelect.addEventListener('change', (e) => this.handleThemeChange(e.target.value));
+        }
+
+        // Settings forms
+        const forms = document.querySelectorAll('.settings-form');
+        forms.forEach(form => {
+            form.addEventListener('change', () => this.markSettingsAsChanged());
+        });
+
+        // Handle page unload
+        window.addEventListener('beforeunload', (e) => {
+            if (this.hasUnsavedChanges) {
+                e.preventDefault();
+                e.returnValue = '';
             }
-        } catch (error) {
-            console.error('Profile update error:', error);
-            this.showNotification('Failed to update profile', 'error');
-        }
-    }
-
-    // Handle Password Change
-    async handlePasswordChange(event) {
-        event.preventDefault();
-        const form = event.target;
-        const formData = new FormData(form);
-
-        try {
-            const response = await fetch('/dashboard/settings/password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                },
-                body: JSON.stringify(Object.fromEntries(formData))
-            });
-
-            const data = await response.json();
-            if (data.success) {
-                this.showNotification('Password changed successfully', 'success');
-                form.reset();
-            } else {
-                this.showNotification(data.error, 'error');
-            }
-        } catch (error) {
-            console.error('Password change error:', error);
-            this.showNotification('Failed to change password', 'error');
-        }
-    }
-
-    // Handle Account Deletion
-    async handleAccountDeletion(event) {
-        event.preventDefault();
-        const form = event.target;
-        const confirmInput = form.querySelector('input[name="confirmDelete"]');
-
-        if (confirmInput.value !== 'DELETE') {
-            this.showNotification('Please type DELETE to confirm', 'error');
-            return;
-        }
-
-        try {
-            const response = await fetch('/dashboard/settings/delete-account', {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                }
-            });
-
-            const data = await response.json();
-            if (data.success) {
-                window.location.href = '/logout';
-            } else {
-                this.showNotification(data.error, 'error');
-            }
-        } catch (error) {
-            console.error('Account deletion error:', error);
-            this.showNotification('Failed to delete account', 'error');
-        }
-    }
-
-    // Handle Project Card Click
-    handleProjectCardClick(event) {
-        const card = event.currentTarget;
-        const projectId = card.dataset.projectId;
-        window.location.href = `/dashboard/projects/${projectId}`;
-    }
-
-    // Show New Project Modal
-    showNewProjectModal() {
-        const modal = new bootstrap.Modal(document.getElementById('newProjectModal'));
-        modal.show();
-    }
-
-    // Handle Settings Navigation
-    handleSettingsNavigation(event) {
-        event.preventDefault();
-        const section = event.currentTarget.dataset.settingsNav;
-        this.loadSettingsSection(section);
-    }
-
-    // Load Settings Section
-    async loadSettingsSection(section) {
-        try {
-            const response = await fetch(`/dashboard/settings/${section}`);
-            const data = await response.text();
-            document.querySelector('.settings-content').innerHTML = data;
-            this.initializeEventListeners();
-        } catch (error) {
-            console.error('Settings navigation error:', error);
-            this.showNotification('Failed to load settings section', 'error');
-        }
-    }
-
-    // Initialize Project Status Chart
-    initializeProjectStatusChart() {
-        const ctx = document.getElementById('projectStatusChart');
-        if (!ctx) return;
-
-        // Implementation depends on your chosen charting library
-        // Example using Chart.js
-        if (window.Chart) {
-            new Chart(ctx, {
-                // Chart configuration
-            });
-        }
-    }
-
-    // Initialize Activity Timeline
-    initializeActivityTimeline() {
-        const timeline = document.querySelector('.activity-timeline');
-        if (!timeline) return;
-
-        // Add any timeline-specific initialization
-    }
-
-    // Initialize Progress Charts
-    initializeProgressCharts() {
-        document.querySelectorAll('.progress-chart').forEach(chart => {
-            // Initialize individual progress charts
         });
     }
 
-    // Handle WebSocket Messages
-    handleWebSocketMessage(message) {
-        switch (message.type) {
-            case 'project_update':
-                this.updateProjectCard(message.data);
-                break;
-            case 'new_activity':
-                this.addActivityItem(message.data);
+    /**
+     * Set up theme handling
+     */
+    setupTheme() {
+        const theme = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+        
+        const themeSelect = document.getElementById('theme');
+        if (themeSelect) {
+            themeSelect.value = theme;
+        }
+    }
+
+    /**
+     * Handle WebSocket messages
+     */
+    handleWebSocketMessage(data) {
+        switch (data.type) {
+            case 'notification':
+                this.showNotification(data.message, data.level);
                 break;
             case 'stats_update':
-                this.updateStats(message.data);
+                this.updateStats(data.stats);
                 break;
+            case 'activity_update':
+                this.updateActivity(data.activity);
+                break;
+            default:
+                console.log('Unknown message type:', data.type);
         }
     }
 
-    // Update Project Card
-    updateProjectCard(project) {
-        const card = document.querySelector(`[data-project-id="${project.id}"]`);
-        if (card) {
-            // Update card content
-            card.querySelector('.project-name').textContent = project.name;
-            card.querySelector('.project-description').textContent = project.description;
-            card.querySelector('.project-status').textContent = project.status;
+    /**
+     * Send WebSocket message
+     */
+    sendMessage(message) {
+        if (this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify(message));
         }
     }
 
-    // Add Activity Item
-    addActivityItem(activity) {
-        const timeline = document.querySelector('.activity-list');
-        if (timeline) {
-            const item = this.createActivityItem(activity);
-            timeline.insertBefore(item, timeline.firstChild);
-            
-            // Remove oldest item if more than 10
-            if (timeline.children.length > 10) {
-                timeline.removeChild(timeline.lastChild);
-            }
-        }
+    /**
+     * Show notification
+     */
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+
+        const container = document.querySelector('.notifications-container') || 
+            this.createNotificationContainer();
+
+        container.appendChild(notification);
+
+        setTimeout(() => {
+            notification.classList.add('fade-out');
+            setTimeout(() => notification.remove(), 300);
+        }, 5000);
     }
 
-    // Create Activity Item
-    createActivityItem(activity) {
-        const item = document.createElement('div');
-        item.className = 'activity-item';
-        item.innerHTML = `
-            <div class="activity-icon">
-                <i class="bi bi-${this.getActivityIcon(activity.action)}"></i>
-            </div>
-            <div>
-                <p class="mb-1">${activity.message}</p>
-                <small class="text-muted">${this.formatDate(activity.timestamp)}</small>
-            </div>
-        `;
-        return item;
+    /**
+     * Create notification container
+     */
+    createNotificationContainer() {
+        const container = document.createElement('div');
+        container.className = 'notifications-container';
+        document.body.appendChild(container);
+        return container;
     }
 
-    // Update Stats
+    /**
+     * Update statistics display
+     */
     updateStats(stats) {
         Object.entries(stats).forEach(([key, value]) => {
             const element = document.querySelector(`[data-stat="${key}"]`);
@@ -302,55 +169,100 @@ class Dashboard {
         });
     }
 
-    // Show Notification
-    showNotification(message, type = 'info') {
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type} position-fixed bottom-0 end-0 m-3`;
-        toast.innerHTML = `
-            <div class="toast-header">
-                <i class="bi bi-${this.getNotificationIcon(type)} me-2"></i>
-                <strong class="me-auto">${type.charAt(0).toUpperCase() + type.slice(1)}</strong>
-                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+    /**
+     * Update activity feed
+     */
+    updateActivity(activity) {
+        const activityList = document.querySelector('.activity-list');
+        if (!activityList) return;
+
+        const activityItem = document.createElement('div');
+        activityItem.className = 'activity-item';
+        activityItem.innerHTML = `
+            <div class="activity-icon">${activity.icon}</div>
+            <div class="activity-details">
+                <p class="activity-text">${activity.text}</p>
+                <p class="activity-time">${activity.time}</p>
             </div>
-            <div class="toast-body">${message}</div>
         `;
-        document.body.appendChild(toast);
-        const bsToast = new bootstrap.Toast(toast);
-        bsToast.show();
-        
-        // Remove toast after it's hidden
-        toast.addEventListener('hidden.bs.toast', () => {
-            document.body.removeChild(toast);
+
+        activityList.insertBefore(activityItem, activityList.firstChild);
+
+        // Remove oldest activity if more than 10
+        if (activityList.children.length > 10) {
+            activityList.lastChild.remove();
+        }
+    }
+
+    /**
+     * Handle search input
+     */
+    handleSearch(query) {
+        // Debounce search requests
+        clearTimeout(this.searchTimeout);
+        this.searchTimeout = setTimeout(() => {
+            this.sendMessage({
+                type: 'search',
+                query: query
+            });
+        }, 300);
+    }
+
+    /**
+     * Handle quick action button clicks
+     */
+    handleQuickAction(action) {
+        switch (action) {
+            case 'New Project':
+                window.location.href = `${window.contextPath}/projects/new`;
+                break;
+            case 'Invite Team Member':
+                this.showInviteModal();
+                break;
+            case 'Generate Report':
+                this.generateReport();
+                break;
+            case 'Configure Settings':
+                window.location.href = `${window.contextPath}/dashboard/settings`;
+                break;
+        }
+    }
+
+    /**
+     * Handle theme changes
+     */
+    handleThemeChange(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+        this.sendMessage({
+            type: 'update_preference',
+            preference: 'theme',
+            value: theme
         });
     }
 
-    // Helper Methods
-    getActivityIcon(action) {
-        const icons = {
-            CREATE: 'plus',
-            UPDATE: 'pencil',
-            DELETE: 'trash',
-            DEFAULT: 'arrow-right'
-        };
-        return icons[action] || icons.DEFAULT;
+    /**
+     * Mark settings as changed
+     */
+    markSettingsAsChanged() {
+        this.hasUnsavedChanges = true;
+        const saveButton = document.querySelector('.settings-actions .btn-primary');
+        if (saveButton) {
+            saveButton.classList.add('btn-highlight');
+        }
     }
 
-    getNotificationIcon(type) {
-        const icons = {
-            success: 'check-circle',
-            error: 'exclamation-circle',
-            warning: 'exclamation-triangle',
-            info: 'info-circle'
-        };
-        return icons[type] || icons.info;
-    }
-
-    formatDate(timestamp) {
-        return new Date(timestamp).toLocaleString();
+    /**
+     * Clean up resources
+     */
+    destroy() {
+        if (this.socket) {
+            this.socket.close();
+        }
     }
 }
 
-// Initialize Dashboard
+// Initialize dashboard when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     window.dashboard = new Dashboard();
 });
