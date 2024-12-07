@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brand Style Guide (Visual Identity Guidelines) | Creator Labs</title>
+    
+    <!-- CSS Dependencies -->
+    <link href="/static/css/style.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Header -->
+    <header class="main-header">
+        <div class="container-fluid">
+            <nav class="navbar navbar-expand-lg">
+                <a class="navbar-brand" href="index.html">
+                    <div class="brand-icon">
+                        <i class="bi bi-cpu"></i>
+                    </div>
+                    <div class="brand-text">Creator <span>Labs</span></div>
+                </a>
+
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <div class="collapse navbar-collapse" id="navbarMain">
+                    <ul class="navbar-nav mx-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="index.html">Home</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#team">Our AI Team</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#process">How It Works</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#products">Solutions</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#showcase">Showcase</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#contact">Contact</a>
+                        </li>
+                    </ul>
+
+                    <button class="btn btn-primary" onclick="window.location.href='login.html'">
+                        <i class="bi bi-rocket-takeoff me-2"></i>
+                        Start Building
+                    </button>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <section class="documentation py-5">
+      <div class="container">
+        <h1>Brand Style Guide (Visual Identity Guidelines)</h1>
+        
+        <p>This guide assumes you’ve seen the live website and have access to our design tokens, CSS framework, and component library. Below, we detail how to maintain consistency and extend the established look and feel.</p>
+        
+        <hr>
+        
+        <h2>Logo Usage</h2>
+        
+        <h3>Primary Logo:</h3>
+        <ul>
+            <li><strong>Filename:</strong> <code>logo-primary.svg</code></li>
+            <li>Use this in the website’s header and any light-background hero sections.</li>
+            <li><strong>Minimum size:</strong> 50px height to preserve detail.</li>
+            <li><strong>Clear space:</strong> At least <code>0.5rem</code> margin around the logo (or <code>8px</code> in CSS terms, aligning with our spacing scale).</li>
+        </ul>
+        
+        <h3>Alternate Logos:</h3>
+        <ul>
+            <li><code>logo-white.svg</code>: Use on dark backgrounds (footer or dark hero sections).</li>
+            <li><code>logo-icon-only.svg</code>: A simplified mark (the central symbol) for favicons or social media avatars.</li>
+        </ul>
+        
+        <h3>Do:</h3>
+        <ul>
+            <li>Scale logos proportionally—use <code>height: auto; width: auto;</code> in CSS.</li>
+            <li>Apply a hover effect if clickable: e.g., <code>opacity: 0.9</code> on hover to indicate interactivity.</li>
+        </ul>
+        
+        <h3>Don’t:</h3>
+        <ul>
+            <li>Change logo colors. Use only the provided variants.</li>
+            <li>Add shadows or extra styling not in the official assets.</li>
+        </ul>
+        
+        <hr>
+        
+        <h2>Color Palette</h2>
+        
+        <p>We’ve implemented color variables in <code>:root</code> within our main CSS file (<code>styles.css</code>):</p>
+        
+        <pre><code>:root {
+  --color-purple: #8A6FE6;    /* Primary highlight */
+  --color-indigo: #4D55E8;    /* Secondary highlight */
+  --color-dark-gray: #1C1F2E; /* Backgrounds */
+  --color-light-gray: #F8F8FA;/* Light backgrounds */
+  --color-white: #FFFFFF;     /* Text on dark backgrounds, base UI elements */
+}
+</code></pre>
+        
+        <h3>Usage Guidelines:</h3>
+        <ul>
+            <li><strong>Primary (Purple):</strong> For interactive elements (links, buttons, icons that indicate action).</li>
+            <li><strong>Secondary (Indigo):</strong> For headers, emphasis text, and subtle gradients.</li>
+            <li><strong>Dark Gray:</strong> Default background for sections. Also used for hero areas and containers behind white text.</li>
+            <li><strong>Light Gray:</strong> Ideal for card backgrounds, section dividers, or areas that need contrast from pure white.</li>
+            <li><strong>White:</strong> Use for text on dark backgrounds and as default neutral space.</li>
+        </ul>
+        
+        <h3>Gradients:</h3>
+        <p>Use <code>linear-gradient(135deg, var(--color-purple), var(--color-indigo))</code> for hero text highlights or CTA buttons.</p>
+        
+        <h2>Typography</h2>
+        <p>We rely on the Inter font, served via CSS @import or a self-hosted solution:</p>
+        
+        <pre><code>body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  font-size: 16px;
+  color: var(--color-white);
+}
+</code></pre>
+        
+        <h3>Hierarchy:</h3>
+        <ul>
+            <li><strong>H1:</strong> 2.5rem, bold, typically used once per page (e.g., hero headline).</li>
+            <li><strong>H2:</strong> 2rem, bold, section headings.</li>
+            <li><strong>H3:</strong> 1.5rem, semi-bold, sub-section headings.</li>
+            <li><strong>Body:</strong> 1rem, regular, for paragraphs and long-form content.</li>
+            <li><strong>Small text:</strong> 0.875rem, for disclaimers or less prominent info.</li>
+        </ul>
+        
+        <h3>Line-Height & Spacing:</h3>
+        <ul>
+            <li><strong>Line-height:</strong> ~1.5 for body text.</li>
+            <li><strong>Extra spacing between headings and paragraphs:</strong> 1.5rem margin-bottom on headings to create clear separation.</li>
+        </ul>
+        
+        <h2>Iconography & Illustrations</h2>
+        <p>Icons are sourced from Bootstrap Icons, styled with a gradient text fill when emphasis is needed:</p>
+        
+        <pre><code>.icon-gradient {
+  background: linear-gradient(135deg, var(--color-purple), var(--color-indigo));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+</code></pre>
+        
+        <h3>Usage Examples:</h3>
+        <ul>
+            <li>Navigation icons in the header: <code>bi bi-cpu</code> for AI-related features.</li>
+            <li>CTA buttons: add an icon to the left or right for clarity, e.g., a <code>bi bi-arrow-right</code> icon after “Start Building”.</li>
+        </ul>
+        
+        <h3>Illustrations:</h3>
+        <ul>
+            <li>Use SVG illustrations optimized for web.</li>
+            <li>Keep consistent line thickness and rounded corners.</li>
+            <li>Match brand colors or use neutrals so they blend seamlessly with the background.</li>
+        </ul>
+        
+        <h2>Layout & Spacing</h2>
+        <p>We use a 12-column responsive grid via Bootstrap:</p>
+        
+        <ul>
+            <li>Container classes (.container, .container-fluid) and .row + .col- classes define structure.</li>
+            <li>Maintain 1rem gutters between columns by default.</li>
+            <li>Key sections (hero, features, testimonials) use <code>padding: 4rem 0;</code> to ensure generous breathing room.</li>
+        </ul>
+        
+        <h3>Spacing Tokens:</h3>
+        <p>We have CSS variables for spacing increments (in styles.css):</p>
+        
+        <pre><code>:root {
+  --space-xxs: 0.25rem; /* 4px */
+  --space-xs:  0.5rem;  /* 8px */
+  --space-sm:  1rem;    /* 16px */
+  --space-md:  1.5rem;  /* 24px */
+  --space-lg:  2rem;    /* 32px */
+  --space-xl:  4rem;    /* 64px */
+}
+</code></pre>
+        
+        <p>Apply these to maintain consistent spacing:</p>
+        
+        <ul>
+            <li><strong>Headings:</strong> margin-bottom: <code>var(--space-md)</code></li>
+            <li><strong>Sections:</strong> padding: <code>var(--space-xl) 0</code> for main sections, <code>var(--space-lg) 0</code> for smaller sub-sections.</li>
+        </ul>
+        
+        <h2>Components & Patterns</h2>
+        
+        <h3>Buttons</h3>
+        <p><strong>Primary button:</strong> Purple gradient background (<code>linear-gradient(135deg, var(--color-purple), var(--color-indigo))</code>), white text, 12px border-radius.</p>
+        <p><strong>Hover:</strong> Slight elevation (box-shadow) and brighter gradient.</p>
+        <p><strong>Class:</strong> <code>.btn-primary</code> for main CTAs.</p>
+        <p><strong>Example:</strong></p>
+        
+        <pre><code><button class="btn btn-primary">Start Building</button>
+</code></pre>
+        
+        <h3>Forms</h3>
+        <p><strong>Inputs:</strong></p>
+        <ul>
+            <li>Base: <code>.form-control</code></li>
+            <li>Icons inside inputs: <code>.form-control-icon</code> wrapper</li>
+            <li>Validation states: <code>.is-valid</code>, <code>.is-invalid</code> classes highlight correct or erroneous input.</li>
+        </ul>
+        
+        <p><strong>Labels & Help Text:</strong></p>
+        <ul>
+            <li><code>.form-label</code> for labels aligned above inputs.</li>
+            <li><code>.form-text</code> for small hints or instructions.</li>
+        </ul>
+        
+        <p><strong>Why This Matters:</strong><br/>
+        Uniform form controls reduce cognitive load. Users quickly learn how to input data and trust the consistency.</p>
+        
+        <h3>Cards</h3>
+        <p><strong>Structure:</strong></p>
+        
+        <pre><code><div class="card">
+  <div class="card-header">Title</div>
+  <div class="card-body">
+    <p>Body text here.</p>
+  </div>
+  <div class="card-footer">Footer actions</div>
+</div>
+</code></pre>
+        
+        <p><strong>Guidelines:</strong></p>
+        <ul>
+            <li>Use <code>.card-header</code> for titles or action buttons (like a settings icon).</li>
+            <li><code>.card-body</code> holds primary content.</li>
+            <li><code>.card-footer</code> optional for related links or secondary actions.</li>
+        </ul>
+        
+        <p><strong>Why This Matters:</strong><br/>
+        A standard card layout lets users quickly identify content hierarchy, making scanning easier.</p>
+        
+        <h3>Navigation Bar</h3>
+        <p><strong>Structure:</strong></p>
+        <ul>
+            <li><code>.navbar</code> as the main container.</li>
+            <li><code>.navbar-brand</code> for logo or brand name.</li>
+            <li><code>.nav</code> and <code>.nav-link</code> for the menu items.</li>
+        </ul>
+        
+        <p><strong>Interactions:</strong></p>
+        <ul>
+            <li>Active page indicated by <code>.active</code> class on the corresponding <code>.nav-link</code>.</li>
+            <li>Hover states: underline or slight opacity shift.</li>
+        </ul>
+        
+        <p><strong>Why This Matters:</strong><br/>
+        A consistent navigation pattern helps users easily explore different sections without confusion.</p>
+        
+        <h3>Modals</h3>
+        <p><strong>Usage:</strong></p>
+        <ul>
+            <li><code>.modal</code> class for the overlay container.</li>
+            <li><code>.modal-dialog</code> and <code>.modal-content</code> for the structured layout.</li>
+            <li><code>.modal-header</code>, <code>.modal-body</code>, <code>.modal-footer</code> to clearly define areas.</li>
+        </ul>
+        
+        <p><strong>Behavior:</strong></p>
+        <ul>
+            <li>Accessible: Focus trap inside modal.</li>
+            <li>Close action: <code>.modal-close</code> button with appropriate aria-label.</li>
+        </ul>
+        
+        <p><strong>Why This Matters:</strong><br/>
+        A uniform modal pattern ensures a predictable, non-disruptive user experience, crucial for delicate tasks like confirmations or input gathering.</p>
+        
+        <h3>Responsive & Adaptive Design</h3>
+        <p><strong>Breakpoints:</strong></p>
+        <ul>
+            <li>Use standard Bootstrap breakpoints (e.g., <code>.col-md-6</code>, <code>.col-lg-4</code>) to adapt layouts on different screens.</li>
+            <li>Test components on mobile, tablet, and desktop to confirm that spacing, text size, and element order remain coherent.</li>
+        </ul>
+        
+        <p><strong>Scalability:</strong></p>
+        <ul>
+            <li>Components adapt gracefully as viewports change—buttons and text scale, navigation collapses into a hamburger menu, cards stack vertically.</li>
+        </ul>
+        
+        <h3>Accessibility Considerations</h3>
+        <p><strong>ARIA Labels:</strong><br/>
+        Where necessary, add <code>aria-label</code> or <code>aria-expanded</code> attributes, especially in navigation menus and modals.</p>
+        
+        <p><strong>Keyboard Navigation:</strong><br/>
+        All interactive elements must be reachable via Tab.</p>
+        
+        <p><strong>Color Contrast:</strong><br/>
+        Ensure text over gradients or colored backgrounds meets a minimum of 4.5:1 contrast ratio.</p>
+        
+        <p><strong>Why This Matters:</strong><br/>
+        Inclusive design ensures everyone can use the product effectively, reflecting our brand’s value of empathy.</p>
+        
+        <h2>Working with the DLS</h2>
+        <h3>For Designers:</h3>
+        <ul>
+            <li>Start by referencing tokens and pre-built components in Figma or your design tool.</li>
+            <li>Don’t introduce new colors or fonts without updating the DLS first.</li>
+            <li>Keep feedback loops open with developers to ensure feasibility.</li>
+        </ul>
+        
+        <h3>For Developers:</h3>
+        <ul>
+            <li>Reuse classes and patterns from our component library rather than creating new CSS for similar elements.</li>
+            <li>Submit PRs to the DLS repository if a new pattern emerges; maintainers will review and integrate it.</li>
+            <li>Write code that respects naming conventions and accessibility patterns established here.</li>
+        </ul>
+        
+        <h3>Evolving the DLS</h3>
+        <p>This system is not static. As we learn from user feedback and product changes:</p>
+        <ul>
+            <li>Update tokens if a new color shade or spacing scale is needed.</li>
+            <li>Add new components as product features expand.</li>
+            <li>Document changes in a <code>CHANGELOG.md</code> so all team members can track updates.</li>
+        </ul>
+        
+        <h3>Conclusion</h3>
+        <p>Our Design Language System turns brand values and visual identity into a practical, maintainable set of components and patterns. By following these guidelines, everyone—designers, developers, product managers—can build on a solid foundation, ensuring a unified and user-friendly product experience.</p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer bg-dark py-5">
+       <div class="container">
+           <!-- Main Footer Content -->
+           <div class="row g-4 mb-5">
+               <!-- Company Info -->
+               <div class="col-lg-4">
+                   <div class="footer-brand mb-4">
+                       <a href="index.html" class="d-flex align-items-center text-decoration-none">
+                           <i class="bi bi-cpu-fill text-primary me-2 fs-3"></i>
+                           <span class="gradient-text fs-4 fw-bold">Creator Labs Inc.</span>
+                       </a>
+                   </div>
+                   <p class="text-light-emphasis mb-4">
+                       Building products through conversations with AI - from idea to interactive prototype in minutes.
+                   </p>
+                   <div class="social-links d-flex gap-3">
+                       <a href="https://linkedin.com/company/creator-labs-inc" class="social-link" aria-label="LinkedIn">
+                           <i class="bi bi-linkedin"></i>
+                       </a>
+                       <a href="https://twitter.com/creatorlabsai" class="social-link" aria-label="Twitter">
+                           <i class="bi bi-twitter-x"></i>
+                       </a>
+                       <a href="https://github.com/creator-labs" class="social-link" aria-label="GitHub">
+                           <i class="bi bi-github"></i>
+                       </a>
+                   </div>
+               </div>
+    
+               <!-- Quick Links -->
+               <div class="col-lg-2 col-md-4">
+                   <h4 class="footer-title fw-bold mb-4">Products</h4>
+                   <ul class="footer-links list-unstyled">
+                       <li><a href="/blog-generator">Blog Post Generator</a></li>
+                       <li><a href="/email-generator">Email Generator</a></li>
+                       <li><a href="/linkedin-generator">LinkedIn Content</a></li>
+                       <li><a href="/landing-generator">Landing Page Builder</a></li>
+                   </ul>
+               </div>
+    
+               <!-- Services -->
+               <div class="col-lg-2 col-md-4">
+                   <h4 class="footer-title fw-bold mb-4">Company</h4>
+                   <ul class="footer-links list-unstyled">
+                       <li><a href="#about">About Us</a></li>
+                       <li><a href="#team">Our Team</a></li>
+                       <li><a href="/pricing">Pricing</a></li>
+                       <li><a href="#contact">Contact</a></li>
+                   </ul>
+               </div>
+    
+               <!-- Contact Info -->
+               <div class="col-lg-4 col-md-4">
+                   <h4 class="footer-title fw-bold mb-4">Contact Info</h4>
+                   <ul class="footer-contact list-unstyled">
+                       <li class="d-flex mb-3">
+                           <i class="bi bi-geo-alt text-primary me-3"></i>
+                           <div>
+                               <p class="text-light-emphasis mb-0">B952 DIVYASREE 77 PLACE APARTMENTS</p>
+                               <p class="text-light-emphasis mb-0">BENGALURU 560037, KA</p>
+                               <p class="text-light-emphasis mb-0">India</p>
+                           </div>
+                       </li>
+                       <li class="d-flex mb-3">
+                           <i class="bi bi-telephone text-primary me-3"></i>
+                           <div>
+                               <p class="text-light-emphasis mb-0">+91 86612 00001</p>
+                               <p class="text-muted mb-0">Mon-Fri 9am-6pm IST</p>
+                           </div>
+                       </li>
+                       <li class="d-flex">
+                           <i class="bi bi-envelope text-primary me-3"></i>
+                           <div>
+                               <p class="text-light-emphasis mb-0">contact@creatorlabs.ai</p>
+                               <p class="text-muted mb-0">24/7 Support</p>
+                           </div>
+                       </li>
+                   </ul>
+               </div>
+           </div>
+    
+           <!-- Footer Bottom -->
+           <div class="footer-bottom pt-4 border-top border-secondary">
+               <div class="row align-items-center">
+                   <div class="col-md-6">
+                       <p class="text-muted mb-md-0">
+                           &copy; 2024 Creator Labs Inc. All rights reserved.
+                       </p>
+                   </div>
+                   <div class="col-md-6">
+                       <ul class="footer-bottom-links list-inline mb-0 text-md-end">
+                           <li class="list-inline-item"><a href="/privacy">Privacy Policy</a></li>
+                           <li class="list-inline-item"><a href="/terms">Terms of Service</a></li>
+                           <li class="list-inline-item"><a href="/cookies">Cookie Policy</a></li>
+                       </ul>
+                   </div>
+               </div>
+           </div>
+       </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

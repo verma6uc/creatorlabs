@@ -1,0 +1,314 @@
+/* Global Variables */
+:root {
+    --primary-gradient: linear-gradient(135deg, #8A6FE6 0%, #4D55E8 100%);
+    --background-dark: #1C1F2E;
+    --background-darker: #252837;
+    --accent-color: #8A6FE6;
+    --border-light: rgba(255, 255, 255, 0.1);
+    --bg-translucent: rgba(255, 255, 255, 0.05);
+}
+
+/* Base Styles */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--background-dark);
+    color: #fff;
+    line-height: 1.6;
+}
+
+/* Header Styles */
+.main-header {
+    background-color: rgba(28, 31, 46, 0.95);
+    padding: 0.75rem 0;
+    position: fixed;
+    width: 100%;
+    top: 0;
+    z-index: 1000;
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.navbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.nav-link {
+    color: rgba(255, 255, 255, 0.9) !important;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.nav-link:hover {
+    color: var(--accent-color) !important;
+}
+
+/* Hero Section */
+.hero-section {
+    padding-top: 80px;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    background: linear-gradient(180deg, var(--background-dark) 0%, var(--background-darker) 100%);
+}
+
+/* Team Section */
+.team-section {
+    background: linear-gradient(180deg, var(--background-darker) 0%, var(--background-dark) 100%);
+    padding: 100px 0;
+    position: relative;
+}
+
+.team-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    padding: 2rem 0;
+}
+
+.member-card {
+    background: var(--bg-translucent);
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    padding: 2rem;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+}
+
+.member-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--primary-gradient);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.member-card:hover {
+    transform: translateY(-5px);
+}
+
+.member-card:hover::before {
+    opacity: 1;
+}
+
+.member-icon {
+    width: 64px;
+    height: 64px;
+    background: rgba(138, 111, 230, 0.1);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+    transition: transform 0.3s ease;
+}
+
+.member-icon i {
+    font-size: 28px;
+    color: var(--accent-color);
+}
+
+.member-card:hover .member-icon {
+    transform: scale(1.1) rotate(5deg);
+}
+
+.member-quote {
+    background: rgba(138, 111, 230, 0.05);
+    border-left: 3px solid var(--accent-color);
+    padding: 1rem;
+    border-radius: 0 8px 8px 0;
+    margin-top: 1.5rem;
+}
+
+/* Button Styles */
+.btn-primary {
+    background: var(--primary-gradient);
+    border: none;
+    padding: 0.75rem 1.5rem;
+    transition: all 0.3s ease;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(138, 111, 230, 0.3);
+}
+
+.btn-outline-light {
+    border: 2px solid rgba(138, 111, 230, 0.5);
+    transition: all 0.3s ease;
+}
+
+.btn-outline-light:hover {
+    background: rgba(138, 111, 230, 0.1);
+    border-color: var(--accent-color);
+    transform: translateY(-2px);
+}
+
+/* Text Styles */
+.gradient-text {
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.text-light-emphasis {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.product-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.pharma-title-color {
+    color: #8A6FE6;
+}
+
+.edtech-title-color {
+    color: #FF6B6B;
+}
+
+.b2c-title-color {
+    color: #4DABF7;
+}
+
+.product-description {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* Category Labels */
+.category-label {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 1rem;
+}
+
+.category-pharma {
+    background: rgba(138, 111, 230, 0.1);
+    color: #8A6FE6;
+}
+
+.category-edtech {
+    background: rgba(255, 107, 107, 0.1);
+    color: #FF6B6B;
+}
+
+.category-b2c {
+    background: rgba(77, 171, 247, 0.1);
+    color: #4DABF7;
+}
+
+/* Product Categories */
+.product-category {
+    margin-bottom: 4rem;
+}
+
+.product-category-title {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 2rem;
+}
+
+.pharma-title {
+    color: #8A6FE6;
+}
+
+.edtech-title {
+    color: #FF6B6B;
+}
+
+.b2c-title {
+    color: #4DABF7;
+}
+
+/* Product Grid */
+.product-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+}
+
+/* Product Card */
+.product-card {
+    background: var(--bg-translucent);
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    padding: 1.5rem;
+    flex: 1 1 calc(33.333% - 2rem);
+    box-sizing: border-box;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.product-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+/* Feature List */
+.feature-list {
+    margin-top: 1rem;
+    padding-left: 1.25rem;
+}
+
+.feature-list li {
+    margin-bottom: 0.5rem;
+}
+
+/* Animations */
+@keyframes float {
+    0% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+    100% { transform: translateY(0); }
+}
+
+.floating {
+    animation: float 6s ease-in-out infinite;
+}
+
+/* Responsive Design */
+@media (max-width: 991px) {
+    .navbar-collapse {
+        background: var(--background-darker);
+        padding: 1rem;
+        border-radius: 12px;
+        border: 1px solid var(--border-light);
+        margin-top: 1rem;
+    }
+
+    .team-grid {
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    }
+
+    .product-card {
+        flex: 1 1 calc(50% - 2rem);
+    }
+}
+
+@media (max-width: 768px) {
+    .hero-section {
+        padding-top: 60px;
+    }
+
+    .team-section {
+        padding: 60px 0;
+    }
+
+    .member-card {
+        margin-bottom: 1rem;
+    }
+
+    .product-card {
+        flex: 1 1 100%;
+    }
+}
